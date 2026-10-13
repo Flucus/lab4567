@@ -255,7 +255,8 @@ public final class Harness {
             }
         }
         System.out.printf("OBSERVED track=%s group=%s total=%d passed=%d failed=%d%n", track, group, passed + failed, passed, failed);
-        if (track.equals("exercise")) System.out.println("Exercise failures are expected security findings; they remain FAIL and return nonzero.");
+        if (track.equals("exercise") && failed > 0)
+            System.out.println("Exercise failures are expected security findings; they remain FAIL and return nonzero.");
         return failed == 0 ? 0 : 1;
     }
 }

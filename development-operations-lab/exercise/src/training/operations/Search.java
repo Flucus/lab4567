@@ -2,25 +2,34 @@ package training.operations;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import static training.operations.Contract.*;
 
-/** Intentionally vulnerable teaching code. Never deploy. */
+/** Supplier-scoped parameterized search adapter. */
 public final class Search {
     private final Fixture fixture;
     public Search(Fixture fixture) { this.fixture = fixture; }
     public Response search(String authorization, String name) {
         Identity identity = fixture.authenticate(authorization);
         if (identity == null) return Response.empty(401);
-        fixture.logs.add("Auth=" + authorization);
-        String sql = "SELECT * FROM Documents WHERE Name = '" + name + "' ORDER BY Id";
-        fixture.searchQueries.incrementAndGet();
-        try (Connection c = fixture.connection(); Statement s = c.createStatement()) {
-            try (ResultSet rs = s.executeQuery(sql)) { return new Response(200, Fixture.entities(rs)); }
-        } catch (SQLException failure) {
-            // Safe console error, but the vulnerable query still fails for legitimate apostrophes.
-            return Response.empty(500);
+        synchronized (fixture.policyLock) {
+            if (!fixture.hasScope(identity)) return Response.empty(403);
+            if (name == null || name.isBlank() || name.length() > 100) return Response.empty(400);
+            fixture.logs.add("search:accepted");
+            try {
+                try (Connection c = fixture.connection(); PreparedStatement s = c.prepareStatement(
+                        "SELECT Id, Name FROM Documents WHERE SupplierId = ? AND Name = ? ORDER BY Id")) {
+                    s.setQueryTimeout(2);
+                    s.setMaxRows(100);
+                    s.setString(1, identity.supplier());
+                    s.setString(2, name);
+                    fixture.searchQueries.incrementAndGet();
+                    try (ResultSet rs = s.executeQuery()) { return new Response(200, Fixture.summaries(rs)); }
+                }
+            } catch (SQLException failure) {
+                return Response.empty(500);
+            }
         }
     }
 }

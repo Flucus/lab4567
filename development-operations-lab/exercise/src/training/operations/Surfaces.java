@@ -6,15 +6,18 @@ import java.util.List;
 import java.util.Map;
 import static training.operations.Contract.*;
 
-/** Same class of missing authorisation across local adapters. Intentionally unsafe. */
+/** Authorised local adapters, not actual storage services, URLs, or durable workers. */
 public final class Surfaces {
     private final Fixture fixture;
     private final Map<String, String> cache = new HashMap<>();
     public volatile Runnable afterInitialCheck = () -> { };
     public Surfaces(Fixture fixture) { this.fixture = fixture; }
     public Content read(Identity who, int id) {
-        if (who == null) return Content.denied(401);
-        return retrieve(id);
+        synchronized (fixture.policyLock) {
+            if (who == null) return Content.denied(401);
+            if (!fixture.allowed(who, id)) return Content.denied(403);
+            return retrieve(id);
+        }
     }
     private Content retrieve(int id) {
         try { return new Content(200, fixture.materialize(id)); }
@@ -24,23 +27,52 @@ public final class Surfaces {
     public Content download(Identity who, int id) { return read(who, id); }
     public Content storage(Identity who, int id) { return read(who, id); }
     public Content export(Identity who, List<Integer> ids) {
-        StringBuilder out = new StringBuilder();
-        for (int id : ids) out.append(read(who, id).body());
-        return new Content(200, out.toString());
+        synchronized (fixture.policyLock) {
+            if (who == null) return Content.denied(401);
+            if (ids == null || ids.isEmpty() || ids.size() > 10 ||
+                    ids.stream().anyMatch(java.util.Objects::isNull))
+                return Content.denied(400);
+            for (int id : ids) if (!fixture.allowed(who, id)) return Content.denied(403);
+            StringBuilder out = new StringBuilder();
+            for (int id : ids) {
+                Content result = retrieve(id);
+                if (result.status() != 200) return Content.denied(result.status());
+                out.append(result.body());
+            }
+            return new Content(200, out.toString());
+        }
     }
     public Content cached(Identity who, int id, String name) {
-        if (cache.containsKey(name)) return new Content(200, cache.get(name));
-        Content result = read(who, id); cache.put(name, result.body()); return result;
+        synchronized (fixture.policyLock) {
+            if (who == null) return Content.denied(401);
+            if (!fixture.allowed(who, id)) return Content.denied(403);
+            String key = who.supplier() + ":" + id;
+            if (cache.containsKey(key)) return new Content(200, cache.get(key));
+            Content result = retrieve(id);
+            if (result.status() == 200) cache.put(key, result.body());
+            return result;
+        }
     }
-    public Job enqueue(Identity who, int id) { return fixture.allowed(who, id) ? new Job(who, id) : null; }
+    public Job enqueue(Identity who, int id) {
+        synchronized (fixture.policyLock) { return fixture.allowed(who, id) ? new Job(who, id) : null; }
+    }
     public Content run(Job job) {
         if (job == null) return Content.denied(403);
-        return retrieve(job.documentId()); // Trusts stale enqueue decision.
+        return read(job.requester(), job.documentId());
     }
-    public Content deliver(Job job, Content completed) { return completed; }
+    public Content deliver(Job job, Content completed) {
+        synchronized (fixture.policyLock) {
+            if (job == null || !fixture.allowed(job.requester(), job.documentId()))
+                return Content.denied(403);
+            return completed;
+        }
+    }
     public Content guardedRead(Identity who, int id) {
         if (!fixture.allowed(who, id)) return Content.denied(403);
         afterInitialCheck.run();
-        return retrieve(id); // Check/use race, no recheck or shared guard.
+        synchronized (fixture.policyLock) {
+            if (!fixture.allowed(who, id)) return Content.denied(403);
+            return retrieve(id);
+        }
     }
 }

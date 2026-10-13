@@ -3,12 +3,20 @@ using Microsoft.Data.Sqlite;
 
 namespace Training.Operations;
 
-// Intentionally unsafe local adapters, not real storage, URLs or durable jobs.
+// Authorised local adapters, not actual storage services, URLs, or durable workers.
 public sealed class Surfaces(Fixture fixture)
 {
     private readonly Dictionary<string, string> cache = new(StringComparer.Ordinal);
     public Action AfterInitialCheck = () => { };
-    public Content Read(Identity? who, int id) => who is null ? Content.Denied(401) : Retrieve(id);
+    public Content Read(Identity? who, int id)
+    {
+        lock (fixture.PolicyLock)
+        {
+            if (who is null) return Content.Denied(401);
+            if (!fixture.Allowed(who, id)) return Content.Denied(403);
+            return Retrieve(id);
+        }
+    }
     private Content Retrieve(int id)
     {
         try { return new(200, fixture.Materialize(id)); }
@@ -20,24 +28,52 @@ public sealed class Surfaces(Fixture fixture)
     public Content Storage(Identity? who, int id) => Read(who, id);
     public Content Export(Identity? who, IReadOnlyList<int>? ids)
     {
-        var output = new StringBuilder();
-        foreach (int id in ids!) output.Append(Read(who, id).Body);
-        return new(200, output.ToString());
+        lock (fixture.PolicyLock)
+        {
+            if (who is null) return Content.Denied(401);
+            if (ids is null || ids.Count == 0 || ids.Count > 10) return Content.Denied(400);
+            foreach (int id in ids) if (!fixture.Allowed(who, id)) return Content.Denied(403);
+            var output = new StringBuilder();
+            foreach (int id in ids)
+            {
+                var result = Retrieve(id);
+                if (result.Status != 200) return Content.Denied(result.Status);
+                output.Append(result.Body);
+            }
+            return new(200, output.ToString());
+        }
     }
     public Content Cached(Identity? who, int id, string name)
     {
-        if (cache.TryGetValue(name, out var body)) return new(200, body);
-        var result = Read(who, id);
-        cache[name] = result.Body;
-        return result;
+        lock (fixture.PolicyLock)
+        {
+            if (who is null) return Content.Denied(401);
+            if (!fixture.Allowed(who, id)) return Content.Denied(403);
+            string key = who.Supplier + ":" + id;
+            if (cache.TryGetValue(key, out var body)) return new(200, body);
+            var result = Retrieve(id);
+            if (result.Status == 200) cache[key] = result.Body;
+            return result;
+        }
     }
-    public Job? Enqueue(Identity? who, int id) => fixture.Allowed(who, id) ? new(who!, id) : null;
-    public Content Run(Job? job) => job is null ? Content.Denied(403) : Retrieve(job.DocumentId);
-    public Content Deliver(Job? job, Content completed) => completed;
+    public Job? Enqueue(Identity? who, int id)
+    {
+        lock (fixture.PolicyLock) return fixture.Allowed(who, id) ? new(who!, id) : null;
+    }
+    public Content Run(Job? job) => job is null ? Content.Denied(403) : Read(job.Requester, job.DocumentId);
+    public Content Deliver(Job? job, Content completed)
+    {
+        lock (fixture.PolicyLock)
+            return job is null || !fixture.Allowed(job.Requester, job.DocumentId) ? Content.Denied(403) : completed;
+    }
     public Content GuardedRead(Identity? who, int id)
     {
         if (!fixture.Allowed(who, id)) return Content.Denied(403);
         AfterInitialCheck();
-        return Retrieve(id);
+        lock (fixture.PolicyLock)
+        {
+            if (!fixture.Allowed(who, id)) return Content.Denied(403);
+            return Retrieve(id);
+        }
     }
 }

@@ -295,7 +295,8 @@ public static class Harness
             }
         }
         Console.WriteLine($"OBSERVED track={track} group={group} total={passed + failed} passed={passed} failed={failed}");
-        if (track == "exercise") Console.WriteLine("Exercise failures are expected security findings; they remain FAIL and return nonzero.");
+        if (track == "exercise" && failed > 0)
+            Console.WriteLine("Exercise failures are expected security findings; they remain FAIL and return nonzero.");
         return failed == 0 ? 0 : 1;
     }
 }
