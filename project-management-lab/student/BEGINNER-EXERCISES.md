@@ -104,3 +104,45 @@ Treat these as hypothetical paper exercises, separate from baseline R1: overlapp
 5. Is a race that discloses a revoked user's document only a reliability bug?
 
 **Submit:** three finding rows, one boundary table, three reliability designs and five short answers. Add one sentence describing how you checked Copilot's suggestions. Mark execution **not performed**; do not upload actual assessments, tokens or supplier data.
+
+## Completed example answer
+
+The following is a proposed answer using **F1** as the third finding. It is based only on the synthetic R1 report. No action, test, retest or release decision has been performed.
+
+### P-B1 — findings and next actions
+
+| Finding | What is wrong / what is unknown? | Possible impact | Immediate action | Longer-term fix / role | Evidence before closure |
+|---|---|---|---|---|---|
+| F2 | In the fictional staging case, Supplier A can retrieve Supplier B's document. Login worked, but document permission failed. Other paths and production remain unknown. | A supplier could see another supplier's commercial document. The release could expose data across the supplier boundary. | Restrict or disable the affected document-read path and keep the affected scope out of release until reviewed. | Application owner and developers enforce the trusted supplier/resource permission check for every equivalent read path. | Deployed revision identified; own-document access succeeds; cross-supplier, anonymous, missing-scope, search, preview, export, cache and job paths deny access without returning foreign bytes or links. Independent retest is recorded. |
+| F3 | An active synthetic credential is visible in logs readable by a broad support group. Actual misuse is not established. | An unauthorised reader might use the credential or learn sensitive access information. | Revoke or rotate the credential safely, restrict log access and preserve protected investigation evidence. | Credential/service owner fixes logging and redaction; operations verifies authorised consumers use the replacement. | Old credential is rejected; replacement works for authorised use; new logs contain no credential; historical exposure and use have been investigated and documented. |
+| F1 | The fictional advisory applies to the public staging gateway. Production applicability, exact production version and exposure are unknown. | The staging gateway may be exposed to the advisory's risk. The project might carry the issue into release if scope is assumed equivalent. | Contain the affected staging gateway or apply an approved temporary mitigation; keep production as an unanswered question. | Platform/vendor owner applies an effective supported fix or mitigation and separately collects authorised production inventory. | Deployed version/configuration and mitigation are identified; approved checks and independent retest confirm the intended result. Production has a separate evidence-based disposition. No invented CVE or production claim is used. |
+
+F4's supplied 9.8 score is not a safe reason to ignore F2 or F3. A score is only one input; F2 is a stated cross-supplier disclosure and F3 concerns an active credential exposed to broad readers. Evidence quality, exposure, affected data, scope and available containment also matter. An authorised person must make the release/risk decision.
+
+### P-B2 — trust boundaries
+
+| Item / boundary | Who supplies the data or statement? | What cannot be assumed? | Check or accountable decision needed |
+|---|---|---|---|
+| Supplier document access | The portal receives Supplier A's login and document request; R1 states the fictional staging result. | A successful login identifies A but does not authorise access to Supplier B's document. | The application must derive the supplier identity from trusted server state and check permission for the exact resource before returning content. The application owner is accountable. |
+| Credential in logs | The logging/support process and R1's synthetic log description. | A credential copied into broadly readable logs is not protected merely because its original service use was authorised. | Revoke/rotate safely, restrict and redact logs, investigate historical access, and have the credential/service owner verify authorised consumers. Do not copy the secret into an AI prompt. |
+| Vendor scanner statement | The vendor scanner output supplied for F4. | It proves that the scanner reported a build dependency, not that exploitation works, that production is affected, or that the issue is harmless. | Verify the dependency graph, triggering inputs, build steps and artifact impact with the build owner/vendor; make an authorised risk decision. |
+| Retrieved text / AI summary | Retrieved documents or other supplied text, plus an AI-generated proposal. | Text saying “ignore the gap” is data, not release authority, permission or an instruction the tool must obey. | Enforce ACL filtering before retrieval enters model context; validate tool action, resource authorization and limits outside the model. An authorised human role owns release/risk approval. |
+| Staging versus production | R1's staging observations and the project's environment owners. | Staging results neither prove production is safe nor prove production is affected. | Obtain authorised evidence of production version, configuration, exposure and relevant equivalence. Do not test production without approved scope. |
+
+### P-B3 — reliability and coordination designs
+
+| Example | What could go wrong? | Proposed process/system control | Owner role | Expected check (not performed) |
+|---|---|---|---|---|
+| A: overlapping edits | The later full-copy save can overwrite the earlier owner change with the old owner value, or overwrite the due-date change. | Include revision 4 in the update and commit only if the current revision still matches. Advance the revision atomically. A stale save returns a conflict; the user reloads, compares and explicitly merges/retries. | Workflow/product owner and application maintainer. | Two clients start from revision 4; one save succeeds and the other conflicts. A merged save retains both changes and history. If the fields control access or release, check the related security/governance consequence too. |
+| B: duplicate request | A lost reply followed by a retry creates two identical report jobs. | Require a stable request ID and canonical request contents. Same ID plus same contents returns/resumes the original operation; same ID plus different contents is rejected. Deduplication and job creation must be atomic, with defined pending, failed and completed recovery states. | Operations/workflow owner and application maintainer. | Repeated and simultaneous identical requests create one logical job; changed-content reuse conflicts; crash/retry follows the documented recovery behavior. This example is reliability-only unless a real effect changes security or authorization. |
+| C: stale board pack | Approval for revision A might be incorrectly applied to hypothetical revision B even though the release scope changed. | Bind the decision to the report revision, proposed scope/build, evidence date, conditions and authorised role. Block stale application atomically when the scope differs; preserve the old decision and request re-review. | Project/change coordinator maintains the versioned pack; authorised release role decides; independent reviewer checks evidence. | Approval for A cannot release B; a changed scope triggers the required review; unchanged authorised scope follows the normal path. B does not alter baseline R1. |
+
+### Five quick answers
+
+1. **No.** A login identifies a user; it does not prove permission to a specific document.
+2. **No.** An absent CVSS score means the score is unknown, not that the risk is low.
+3. **No.** A patch email is a claim. Closure needs suitable deployed evidence and an independent retest, with remaining work tracked.
+4. **No.** Copilot can organise approved information, but an authorised human must accept residual risk and approve release.
+5. **No.** If a race discloses a revoked user's document, it is a security problem as well as a reliability/concurrency problem.
+
+I checked Copilot's suggestions against the supplied R1 report and the exercise limits, keeping unknowns visible and changing every claimed action or test result to a proposal or expected check. Execution was **not performed**.
